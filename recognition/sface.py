@@ -1,0 +1,60 @@
+import numpy as np
+import cv2 as cv
+
+
+class SFace:
+    def __init__(self, modelPath, disType=0, backendId=0, targetId=0):
+        self._modelPath = modelPath
+        self._backendId = backendId
+        self._targetId = targetId
+        self._model = cv.FaceRecognizerSF.create(
+            model=self._modelPath,
+            config="",
+            backend_id=self._backendId,
+            target_id=self._targetId)
+
+        self._disType = disType  # 0: semelhança de cosseno, 1: distância Norm-L2
+        assert self._disType in [
+            0, 1], "0: Cosine similarity, 1: norm-L2 distance, others: invalid"
+
+        self._threshold_cosine = 0.363
+        self._threshold_norml2 = 1.128
+
+    @property
+    def name(self):
+        return self.__class__.__name__
+
+    def setBackendAndTarget(self, backendId, targetId):
+        self._backendId = backendId
+        self._targetId = targetId
+        self._model = cv.FaceRecognizerSF.create(
+            model=self._modelPath,
+            config="",
+            backend_id=self._backendId,
+            target_id=self._targetId)
+
+    def _preprocess(self, image, bbox):
+        if bbox is None:
+            return image
+        else:
+            return self._model.alignCrop(image, bbox)
+
+    def infer(self, image, bbox=None):
+        # Pré-processar
+        inputBlob = self._preprocess(image, bbox)
+
+        # Avançar
+        features = self._model.feature(inputBlob)
+        return features
+
+    def match(self, image1, face1, image2, face2):
+        feature1 = self.infer(image1, face1)
+        feature2 = self.infer(image2, face2)
+
+        if self._disType == 0:  # COSSENO
+            cosine_score = self._model.match(feature1, feature2, self._disType)
+            return 1 if cosine_score >= self._threshold_cosine else 0
+        else:  # NORM_L2
+            norml2_distance = self._model.match(
+                feature1, feature2, self._disType)
+            return 1 if norml2_distance <= self._threshold_norml2 else 0
